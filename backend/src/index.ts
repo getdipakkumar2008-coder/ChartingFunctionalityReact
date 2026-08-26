@@ -19,7 +19,20 @@ app.use(
 app.use(express.json());
 app.use("/api", router);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[server] listening on :${PORT}`);
   registerCronJobs();
 });
+
+// Without this, killing the process (Ctrl+C, or a supervisor sending SIGTERM) can leave
+// the port bound until the OS reclaims it, which surfaces as a confusing EADDRINUSE crash
+// on the next start rather than a clean restart. Close the HTTP server explicitly instead
+// of relying on the default (no-op) SIGINT/SIGTERM behavior for a bound TCP listener.
+function shutdown(signal: string) {
+  console.log(`[server] received ${signal}, shutting down`);
+  server.close(() => process.exit(0));
+  // Force-exit if close() hangs (e.g. a keep-alive connection refusing to drain).
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

@@ -60,6 +60,19 @@ Full design rationale: `ARCHITECTURE.md`. Task breakdown: `TASK.md`. Delivery or
   install for visual verification** — launch a throwaway script that loads the dev server,
   checks console errors, and screenshots the page. Delete the scratch script/screenshot
   afterward; don't commit them.
+- **On this Windows machine, stopping a backgrounded `npm run dev` (via the harness's
+  TaskStop) does not reliably kill the actual `node.exe` process** — `npm` spawns `tsx`/
+  `vite` as a child, which spawns the real listener as a grandchild; TaskStop kills the
+  shell wrapper but the grandchild can survive as an orphan still holding the port. This
+  caused a real `EADDRINUSE` crash and left 3+ orphaned dev-server processes running
+  simultaneously across one session before it was caught. After stopping a dev server on
+  this machine, verify the port is actually free (`netstat -ano | grep LISTENING | grep
+  :<port>`) before starting a new one — don't assume TaskStop freed it. If a port is stuck,
+  find the PID via `netstat` and `taskkill //F //PID <pid>` it directly (confirm with
+  `tasklist //FI "PID eq <pid>"` first that it's actually `node.exe`, not something else).
+  The backend now also has a SIGINT/SIGTERM handler (`backend/src/index.ts`) so a clean
+  kill closes the port properly — this helps when the signal reaches the process at all,
+  but doesn't fix the case above where TaskStop never delivers one to the grandchild.
 
 ## Where things live (once Phase 1+ lands)
 - Scraper: `backend/src/scraper/`
